@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-// -*- mode: js -*-
 // Copyright (c) 2013, Mark Cavage. All rights reserved.
 
 var fs = require('fs');
@@ -8,10 +6,9 @@ var path = require('path');
 var assert = require('assert-plus');
 var carrier = require('carrier');
 var dashdash = require('dashdash');
-var geoip = require('geoip');
+var geoip = require('geoip-lite');
 var hogan = require('hogan.js');
 var uuid = require('node-uuid');
-var vasync = require('vasync');
 
 
 
@@ -22,7 +19,6 @@ var CITIES = {
     cities: []
 };
 var COUNTRY_COUNT = {};
-var DB = new geoip.City(path.join(__dirname, 'inc', 'GeoLiteCity.dat'));
 
 var OPTIONS = [
     {
@@ -87,51 +83,45 @@ function pad(n) {
 }
 
 
-function appendCity(ip, barrier) {
-    var op = uuid.v1();
-    barrier.start(op)
-    DB.lookup(ip, function (err, data) {
-        if (err) {
-            console.error('mipmap: error (ip lookup): %s', err.toString());
-            process.nextTick(barrier.done.bind(barrier, op));
-            return;
+function appendCity(ip) {
+    var data = geoip.lookup(ip);
+    if (!data) {
+        console.error('mipmap: lookup of ip=%s failed', ip);
+        return;
+    }
+
+    if (!COUNTRY_COUNT[data.country])
+        COUNTRY_COUNT[data.country] = 1;
+    COUNTRY_COUNT[data.country]++;
+
+    var city;
+    if (CITIES.cities.some(function (c) {
+        var match = false;
+        if (c.properties.name === data.city) {
+            city = c;
+            match = true;
         }
-
-        if (!COUNTRY_COUNT[data.country_code])
-            COUNTRY_COUNT[data.country_code] = 1;
-        COUNTRY_COUNT[data.country_code]++;
-
-        var city;
-        if (CITIES.cities.some(function (c) {
-            var match = false;
-            if (c.properties.name === data.city) {
-                city = c;
-                match = true;
+        return (match);
+    })) {
+        city.properties.count++;
+    } else {
+        CITIES.cities.push({
+            type: 'Feature',
+            id: pad((CITIES.cities.length + 1)),
+            geometry: {
+                type: 'Point',
+                coordinates: [
+                    data.ll.pop(),
+                    data.ll.pop()
+                ]
+            },
+            properties: {
+                count: 1,
+                country_code: data.country,
+                name: data.city
             }
-            return (match);
-        })) {
-            city.properties.count++;
-        } else {
-            CITIES.cities.push({
-                type: 'Feature',
-                id: pad((CITIES.cities.length + 1)),
-                geometry: {
-                    type: 'Point',
-                    coordinates: [
-                        data.longitude,
-                        data.latitude
-                    ]
-                },
-                properties: {
-                    count: 1,
-                    country_code: data.country_code,
-                    name: data.city
-                }
-            });
-        }
-
-        process.nextTick(barrier.done.bind(barrier, op));
-    });
+        });
+    }
 }
 
 
@@ -188,7 +178,6 @@ function usage(parser, msg) {
 ///--- Mainline
 
 (function main() {
-    var barrier = vasync.barrier();
     var finished = 0;
     var opts;
     var parser = dashdash.createParser({options: OPTIONS});
@@ -207,30 +196,28 @@ function usage(parser, msg) {
     fs.mkdirSync(OUT_DIR_DEPS);
     copyDependencies();
 
+    console.log(OUT_DIR);
     var reader = carrier.carry(process.stdin);
     reader.on('line',  function onIpAddress(line) {
-        appendCity(line, barrier);
+        appendCity(line);
     });
 
     reader.once('end', function onStdinDone() {
-        barrier.once('drain', function onGeoIpDone() {
-            CITIES.cities.sort(function (a, b) {
-                var ap = a.properties;
-                var bp = b.properties;
-                var rc = 0;
-                if (ap.count < bp.count) {
-                    rc = -1;
-                } else if (ap.count > bp.count) {
-                    rc = 1;
-                }
-                return (rc);
-            });
-
-            CITIES.cities.length = Math.min(CITIES.cities.length, opts.number);
-
-            serialize(opts);
-            console.log(OUT_DIR);
+        CITIES.cities.sort(function (a, b) {
+            var ap = a.properties;
+            var bp = b.properties;
+            var rc = 0;
+            if (ap.count < bp.count) {
+                rc = -1;
+            } else if (ap.count > bp.count) {
+                rc = 1;
+            }
+            return (rc);
         });
+
+        CITIES.cities.length = Math.min(CITIES.cities.length, opts.number);
+
+        serialize(opts);
     });
 
     process.stdin.resume();
