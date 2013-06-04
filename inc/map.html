@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>mgeoip</title>
+    <style>
+      body {
+        color: #666;
+        background: #f3f3f3;
+        font: normal 10px "Helvetica Neue", Helvetica, sans-serif;
+        margin: 2em;
+      }
+
+      div.tooltip {
+        color: #222;
+        background: #fff;
+        padding: .5em;
+        text-shadow: #f5f5f5 0 1px 0;
+        border-radius: 2px;
+        box-shadow: 0px 0px 2px 0px #a6a6a6;
+        opacity: 0.9;
+        position: absolute;
+      }
+
+      rect {
+        fill: #c6dbef;
+        pointer-events: all;
+      }
+
+      #map {
+        align: center;
+        border:2px solid #000;
+        width:960px;
+        height:550px;
+      }
+
+      .country {
+        fill: #ccc;
+        stroke: #000;
+        stroke-width: .1px;
+        stroke-linejoin: round;
+        cursor: pointer;
+      }
+
+      .hidden {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>mgeoip</h1>
+    <br/><br/>
+    <div id="map"></div>
+
+    <script src="deps/d3.v3.min.js"></script>
+    <script src="deps/d3.geo.projection.v0.min.js"></script>
+    <script src="deps/queue.v1.min.js"></script>
+    <script src="deps/colorbrewer.v1.min.js"></script>
+    <script src="deps/topojson.v1.min.js"></script>
+    <script>
+      var WIDTH  = {{width}};
+      var HEIGHT = {{height}};
+
+      var active;
+      var group;
+
+      var color = d3.scale.quantize()
+      .domain([1, {{range}}])
+      .range(colorbrewer.YlOrBr[9]);
+
+      var projection = d3.geo.robinson()
+      .scale(150)
+      .translate([WIDTH / 2, HEIGHT / 2])
+      .precision(.1);
+
+      var path = d3.geo.path().projection(projection);
+      var svg = d3.select('#map').append('svg')
+      .attr('width', WIDTH)
+      .attr('height', HEIGHT);
+
+      var tooltip = d3.select('#map').append('div').attr('class', 'tooltip');
+
+      group = svg.append('g');
+
+      function showToolTip(name) {
+          var mouse = d3.mouse(svg.node()).map(function (m) {
+              return (parseInt(m));
+          });
+
+          tooltip.classed('hidden', false)
+              .attr('style',
+                    'left:' + (mouse[0] + 25) + 'px; top:' +
+                    mouse[1] + 'px')
+              .html(name);
+      }
+
+      function ready(error, world, names, cities, country_map) {
+          var countries = topojson.feature(world, world.objects.countries).features;
+          var code_index = {};
+
+          names.forEach(function (n) {
+              code_index[n.id] = n;
+          });
+
+          countries.forEach(function (c) {
+              var tmp = code_index[c.id] || {};
+              c.country_code = tmp.country_code || 'XX';
+              c.name = tmp.name || 'Unknown';
+          });
+
+          group.selectAll('.country').data(countries)
+              .enter()
+              .insert('path')
+              .attr('class', 'country')
+              .attr('title', function (d) { return (d.name); })
+              .attr('d', path)
+              .style('fill', function (c) {
+                  return (color(country_map[c.country_code] || 0));
+              })
+              .on('mousemove', function (d) {
+                  showToolTip(d.name);
+              })
+              .on('mouseout',  function (d) {
+                  tooltip.classed('hidden', true)
+              });
+
+
+          var radius = d3.scale.linear().domain([1, 10]).range([2, 5]);
+          cities.cities.forEach(function (d) {
+              var x = projection(d.geometry.coordinates)[0];
+              var y = projection(d.geometry.coordinates)[1];
+
+              svg.append('svg:circle')
+                  .attr('class','point')
+                  .attr('cx', x)
+                  .attr('cy', y)
+                  .attr('r', radius(Math.min(d.properties.count || 10, 10)))
+                  .attr('_text_name', d.properties.name)
+                  .attr('_text_x', x + 4)
+                  .attr('_text_y', y + 1)
+                  .attr('_text_count', d.properties.count || 1);
+          });
+
+          svg.selectAll('circle')
+              .on('mousemove', function () {
+                  var thisp = d3.select(this);
+                  var name = thisp.attr('_text_name') +
+                      '  (' + thisp.attr('_text_count') + ' hits)';
+                  showToolTip(name);
+              })
+              .on('mouseout', function () {
+                  tooltip.classed('hidden', true);
+              });
+      }
+
+      queue()
+      .defer(d3.json, 'deps/world-50m.json')
+      .defer(d3.tsv,  'deps/world-country-names.tsv')
+      .defer(d3.json, 'data/cities.json')
+      .defer(d3.json, 'data/country_count.json')
+      .await(ready);
+
+    </script>
+  </body>
+</html>
