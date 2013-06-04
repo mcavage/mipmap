@@ -64,7 +64,10 @@ var OUT_DIR_DATA = OUT_DIR + '/data';
 var OUT_DIR_DEPS = OUT_DIR + '/deps';
 var OUT_MAP_FILE = OUT_DIR + '/index.html';
 
-var MAP_TMPL = hogan.compile(fs.readFileSync('./inc/map.html', 'utf8'));
+var MAP_TMPL = hogan.compile(fs.readFileSync(path.join(__dirname,
+                                                       'inc',
+                                                       'map.html'),
+                                             'utf8'));
 
 
 
