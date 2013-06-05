@@ -41,6 +41,11 @@ var OPTIONS = [
         'default': 100
     },
     {
+        names: ['quiet', 'q'],
+        type: 'bool',
+        help: 'disable warning messages'
+    },
+    {
         names: ['range', 'r'],
         type: 'positiveInteger',
         help: 'Maximum number of IP hits to account for in a country',
@@ -83,10 +88,14 @@ function pad(n) {
 }
 
 
-function appendCity(ip) {
+function appendCity(line, opts) {
+    line = line.split(/\s+/);
+    var count = line[1];
+    var ip = line[2];
     var data = geoip.lookup(ip);
     if (!data) {
-        console.error('mipmap: lookup of ip=%s failed', ip);
+        if (!opts.quiet)
+            console.error('mipmap: lookup of ip=%s failed', ip);
         return;
     }
 
@@ -103,7 +112,7 @@ function appendCity(ip) {
         }
         return (match);
     })) {
-        city.properties.count++;
+        city.properties.count += count;
     } else {
         CITIES.cities.push({
             type: 'Feature',
@@ -116,7 +125,7 @@ function appendCity(ip) {
                 ]
             },
             properties: {
-                count: 1,
+                count: count,
                 country_code: data.country,
                 name: data.city
             }
@@ -199,7 +208,7 @@ function usage(parser, msg) {
     console.log(OUT_DIR);
     var reader = carrier.carry(process.stdin);
     reader.on('line',  function onIpAddress(line) {
-        appendCity(line);
+        appendCity(line, opts);
     });
 
     reader.once('end', function onStdinDone() {

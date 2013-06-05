@@ -1,0 +1,21 @@
+{
+    "name": "mipmap",
+    "phases": [
+        {
+            "assets": [
+                "/mcavage/public/assets/mipmap-v0.1.0/map.sh"
+            ],
+            "exec": "/assets/mcavage/public/assets/mipmap-v0.1.0/map.sh",
+            "type": "map"
+        },
+        {
+            "assets": [
+                "/mcavage/public/assets/mipmap-v0.1.0/mipmap.tar",
+                "/mcavage/public/assets/mipmap-v0.1.0/upload.sh"
+            ],
+            "init": "tar xf /assets/mcavage/public/assets/mipmap-v0.1.0/mipmap.tar -C /var/tmp",
+            "exec": "sort | uniq -c | node /var/tmp/mipmap/main.js -q | xargs /assets/mcavage/public/assets/mipmap-v0.1.0/upload.sh",
+            "type": "reduce"
+        }
+    ]
+}
